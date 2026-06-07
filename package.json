@@ -1,0 +1,10 @@
+{
+  "name": "radmap",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/",
+    "download": "node --max-old-space-size=4096 tools/download-tiles.mjs"
+  }
+}
