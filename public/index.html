@@ -86,8 +86,10 @@
 
   .leaflet-control-attribution { font-family: var(--mono); font-size: 9px !important; background: rgba(13,12,10,.6) !important; color: var(--ink-dim) !important; }
   .leaflet-control-attribution a { color: var(--ink-dim) !important; }
+  .leaflet-control-scale { transform: translateZ(0); -webkit-transform: translateZ(0); }
   .leaflet-control-scale-line { font-family: var(--mono) !important; font-size: 11px !important; font-weight: 600; -webkit-font-smoothing: antialiased; background: var(--panel-solid) !important; color: var(--ink) !important; border-color: var(--ink-dim) !important; border-width: 2px !important; border-top: none !important; }
   .leaflet-bar a { background: var(--panel-solid) !important; color: var(--ink) !important; border-color: var(--hair) !important; }
+  .zoom-indicator { font-family: var(--mono); font-size: 10px; color: var(--ink-dim); letter-spacing: .08em; padding: 4px 8px; background: var(--panel-solid); border: 1px solid var(--hair); border-radius: 6px; transform: translateZ(0); -webkit-transform: translateZ(0); -webkit-font-smoothing: antialiased; }
 
   .toast {
     position: absolute; bottom: 96px; left: 50%; transform: translateX(-50%); z-index: 1100; max-width: 84vw;
@@ -226,6 +228,18 @@ const topo = new OfflineTopoLayer({ maxNativeZoom: 16, maxZoom: 18, attribution:
 const map = L.map('map', { zoomControl: false, layers: [topo] }).setView([-33.7126, 150.3119], 14);
 L.control.zoom({ position: 'topleft' }).addTo(map);
 L.control.scale({ position: 'bottomleft', metric: true, imperial: false, maxWidth: 140 }).addTo(map);
+
+const ZoomIndicator = L.Control.extend({
+  onAdd() {
+    this._div = L.DomUtil.create('div', 'zoom-indicator');
+    this._update();
+    return this._div;
+  },
+  _update() { this._div.textContent = `z${this._map.getZoom()}`; },
+});
+const zoomCtrl = new ZoomIndicator({ position: 'bottomleft' });
+zoomCtrl.addTo(map);
+map.on('zoomend', () => zoomCtrl._update());
 
 // ---- coordinate readout ----
 function dms(v, pos, neg) {
