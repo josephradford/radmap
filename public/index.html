@@ -129,13 +129,42 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script type="module">
 import { toMGA, formatMGA, formatGridRef } from './lib/mga.mjs';
+import { getTile } from './lib/tile-store.mjs';
 // ---- map setup ----
 const ATTR = '© State of NSW (Spatial Services) — CC BY 4.0';
-const topo = L.tileLayer(
-  'https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Topo_Map/MapServer/tile/{z}/{y}/{x}',
-  { maxNativeZoom: 16, maxZoom: 18, attribution: ATTR }
-);
+const NSW_TILE_URL = 'https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Topo_Map/MapServer/tile';
 
+const OfflineTopoLayer = L.GridLayer.extend({
+  createTile(coords, done) {
+    const tile = document.createElement('img');
+    tile.setAttribute('role', 'presentation');
+    const { x, y, z } = coords;
+
+    getTile(z, x, y).then(blob => {
+      if (blob) {
+        const url = URL.createObjectURL(blob);
+        tile.onload = () => { URL.revokeObjectURL(url); done(null, tile); };
+        tile.onerror = () => { URL.revokeObjectURL(url); this._tryOnline(tile, z, x, y, done); };
+        tile.src = url;
+      } else {
+        this._tryOnline(tile, z, x, y, done);
+      }
+    }).catch(() => {
+      this._tryOnline(tile, z, x, y, done);
+    });
+
+    return tile;
+  },
+
+  _tryOnline(tile, z, x, y, done) {
+    tile.onload = () => done(null, tile);
+    tile.onerror = () => done(new Error('Tile unavailable'), tile);
+    tile.crossOrigin = 'anonymous';
+    tile.src = `${NSW_TILE_URL}/${z}/${y}/${x}`;
+  },
+});
+
+const topo = new OfflineTopoLayer({ maxNativeZoom: 16, maxZoom: 18, attribution: ATTR });
 const map = L.map('map', { zoomControl: false, layers: [topo] }).setView([-33.7126, 150.3119], 14);
 L.control.zoom({ position: 'topleft' }).addTo(map);
 L.control.scale({ position: 'bottomleft', metric: true, imperial: false, maxWidth: 140 }).addTo(map);
