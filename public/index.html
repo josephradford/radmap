@@ -196,7 +196,8 @@ const OfflineTopoLayer = L.GridLayer.extend({
   createTile(coords, done) {
     const tile = document.createElement('img');
     tile.setAttribute('role', 'presentation');
-    const { x, y, z } = coords;
+    const { x, y } = coords;
+    const z = coords.z + (this.options.zoomOffset || 0);
 
     getTile(z, x, y).then(blob => {
       if (blob) {
