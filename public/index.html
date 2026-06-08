@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>radmap</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.11.0/proj4.js"></script>
 <style>
   :root {
     --ink: #f2ebdd;
@@ -127,6 +128,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script type="module">
+import { toMGA, formatMGA, formatGridRef } from './lib/mga.mjs';
 // ---- map setup ----
 const ATTR = '© State of NSW (Spatial Services) — CC BY 4.0';
 const topo = L.tileLayer(
@@ -153,6 +155,8 @@ function updateCentre() {
   document.getElementById('vlat').textContent = c.lat.toFixed(5);
   document.getElementById('vlon').textContent = c.lng.toFixed(5);
   document.getElementById('vdms').textContent = `${dms(c.lat, 'N', 'S')}  ${dms(c.lng, 'E', 'W')}`;
+  const mga = toMGA(c.lat, c.lng);
+  document.getElementById('vmga').textContent = `${formatMGA(mga)}  GR ${formatGridRef(mga)}`;
 }
 map.on('move', updateCentre);
 updateCentre();

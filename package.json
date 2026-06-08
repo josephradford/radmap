@@ -6,5 +6,8 @@
   "scripts": {
     "test": "node --test 'test/**/*.mjs'",
     "download": "node --max-old-space-size=4096 tools/download-tiles.mjs"
+  },
+  "dependencies": {
+    "proj4": "^2.20.8"
   }
 }
