@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>radmap</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<style>
+  :root {
+    --ink: #f2ebdd;
+    --ink-dim: #a89f8b;
+    --panel: rgba(26,24,20,0.82);
+    --panel-solid: #1a1814;
+    --hair: rgba(242,235,221,0.14);
+    --amber: #e8843b;
+    --amber-soft: rgba(232,132,59,0.18);
+    --gps: #3bd17a;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", "Roboto Mono", Menlo, Consolas, monospace;
+    --sans: ui-sans-serif, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: #0d0c0a; color: var(--ink); font-family: var(--sans); overflow: hidden; }
+  #map { position: absolute; inset: 0; background: #0d0c0a; }
+
+  .brand {
+    position: absolute; top: max(12px, env(safe-area-inset-top)); left: 12px; z-index: 1000;
+    display: flex; align-items: center; gap: 9px; padding: 8px 13px;
+    background: var(--panel); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--hair); border-radius: 11px;
+    box-shadow: 0 6px 22px rgba(0,0,0,.35);
+  }
+  .brand .mk { width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--amber); box-shadow: 0 0 0 3px var(--amber-soft); }
+  .brand b { font-size: 13px; letter-spacing: .18em; text-transform: uppercase; font-weight: 700; }
+
+  .readout {
+    position: absolute; top: max(12px, env(safe-area-inset-top)); right: 12px; z-index: 1000;
+    min-width: 188px; padding: 11px 13px;
+    background: var(--panel); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--hair); border-radius: 11px;
+    box-shadow: 0 6px 22px rgba(0,0,0,.35); font-family: var(--mono);
+  }
+  .readout .row { display: flex; justify-content: space-between; align-items: baseline; gap: 14px; }
+  .readout .lbl { font-size: 9px; letter-spacing: .14em; color: var(--ink-dim); text-transform: uppercase; }
+  .readout .val { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .readout .dms { font-size: 11px; color: var(--ink-dim); text-align: right; margin-top: 3px; letter-spacing: .02em; }
+  .readout .mga { font-size: 11px; color: var(--amber); text-align: right; margin-top: 3px; letter-spacing: .02em; }
+  .readout hr { border: none; border-top: 1px solid var(--hair); margin: 9px 0; }
+  .gpsline { display: flex; align-items: center; gap: 7px; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-dim); }
+  .gpsdot { width: 8px; height: 8px; border-radius: 50%; background: #6b6354; transition: background .3s; }
+  .gpsdot.fix { background: var(--gps); box-shadow: 0 0 8px var(--gps); }
+  .gpsdot.err { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+
+  .cross { position: absolute; top: 50%; left: 50%; z-index: 600; pointer-events: none; transform: translate(-50%,-50%); }
+  .cross::before, .cross::after { content: ""; position: absolute; background: rgba(13,12,10,.6); }
+  .cross::before { width: 1px; height: 34px; left: 0; top: -17px; box-shadow: 0 0 0 1px rgba(242,235,221,.35); }
+  .cross::after { height: 1px; width: 34px; top: 0; left: -17px; box-shadow: 0 0 0 1px rgba(242,235,221,.35); }
+  .cross i { position: absolute; width: 7px; height: 7px; border: 1.5px solid var(--amber); border-radius: 50%; left: -3.5px; top: -3.5px; background: rgba(13,12,10,.4); }
+
+  .bar {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    bottom: max(16px, calc(env(safe-area-inset-bottom) + 8px)); z-index: 1000;
+    display: flex; gap: 8px; padding: 8px;
+    background: var(--panel); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--hair); border-radius: 15px; box-shadow: 0 8px 28px rgba(0,0,0,.4);
+  }
+  .btn {
+    appearance: none; border: 1px solid var(--hair); background: rgba(242,235,221,.04); color: var(--ink);
+    font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; font-weight: 600;
+    padding: 11px 13px; border-radius: 10px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 5px;
+    min-width: 62px; transition: background .15s, border-color .15s, transform .05s;
+  }
+  .btn svg { width: 20px; height: 20px; stroke: var(--ink); fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .btn:active { transform: scale(.94); }
+  .btn.on { background: var(--amber-soft); border-color: var(--amber); color: var(--amber); }
+  .btn.on svg { stroke: var(--amber); }
+
+  .me { position: relative; }
+  .me .pulse { position: absolute; left: 50%; top: 50%; width: 38px; height: 38px; margin: -19px 0 0 -19px; border-radius: 50%; background: var(--gps); opacity: .25; animation: pulse 2.2s ease-out infinite; }
+  .me .core { position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: var(--gps); border: 2.5px solid #0d0c0a; box-shadow: 0 0 10px rgba(59,209,122,.7); }
+  @keyframes pulse { 0% { transform: scale(.5); opacity: .45; } 100% { transform: scale(1.6); opacity: 0; } }
+
+  .leaflet-control-attribution { font-family: var(--mono); font-size: 9px !important; background: rgba(13,12,10,.6) !important; color: var(--ink-dim) !important; }
+  .leaflet-control-attribution a { color: var(--ink-dim) !important; }
+  .leaflet-control-scale-line { font-family: var(--mono) !important; font-size: 9px !important; background: var(--panel) !important; color: var(--ink) !important; border-color: var(--hair) !important; border-top: none !important; }
+  .leaflet-bar a { background: var(--panel-solid) !important; color: var(--ink) !important; border-color: var(--hair) !important; }
+
+  .toast {
+    position: absolute; bottom: 96px; left: 50%; transform: translateX(-50%); z-index: 1100; max-width: 84vw;
+    background: var(--panel-solid); border: 1px solid var(--amber); color: var(--ink); font-family: var(--mono); font-size: 11px;
+    padding: 10px 14px; border-radius: 10px; line-height: 1.5; box-shadow: 0 8px 28px rgba(0,0,0,.5); opacity: 0; pointer-events: none; transition: opacity .25s;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="brand"><span class="mk"></span><b>radmap</b></div>
+
+<div class="readout">
+  <div class="row"><span class="lbl">Lat</span><span class="val" id="vlat">—</span></div>
+  <div class="row"><span class="lbl">Lon</span><span class="val" id="vlon">—</span></div>
+  <div class="dms" id="vdms">crosshair · centre of map</div>
+  <div class="mga" id="vmga"></div>
+  <hr/>
+  <div class="gpsline"><span class="gpsdot" id="gdot"></span><span id="gtxt">GPS idle</span></div>
+</div>
+
+<div class="cross"><i></i></div>
+
+<div class="bar">
+  <button class="btn" id="bLocate" title="Find me">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><line x1="12" y1="1" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="23"/><line x1="1" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="23" y2="12"/><circle cx="12" cy="12" r="2"/></svg>
+    Locate
+  </button>
+  <button class="btn" id="bFollow" title="Follow position">
+    <svg viewBox="0 0 24 24"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg>
+    Follow
+  </button>
+  <button class="btn" id="bDownload" title="Manage offline maps">
+    <svg viewBox="0 0 24 24"><path d="M12 3v13m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+    Maps
+  </button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script type="module">
+// ---- map setup ----
+const ATTR = '© State of NSW (Spatial Services) — CC BY 4.0';
+const topo = L.tileLayer(
+  'https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+  { maxNativeZoom: 16, maxZoom: 18, attribution: ATTR }
+);
+
+const map = L.map('map', { zoomControl: false, layers: [topo] }).setView([-33.7126, 150.3119], 14);
+L.control.zoom({ position: 'topleft' }).addTo(map);
+L.control.scale({ position: 'bottomleft', metric: true, imperial: false, maxWidth: 140 }).addTo(map);
+
+// ---- coordinate readout ----
+function dms(v, pos, neg) {
+  const h = v >= 0 ? pos : neg;
+  v = Math.abs(v);
+  const d = Math.floor(v);
+  const m = Math.floor((v - d) * 60);
+  const s = ((v - d - m / 60) * 3600).toFixed(1);
+  return `${d}°${String(m).padStart(2, '0')}'${s}"${h}`;
+}
+
+function updateCentre() {
+  const c = map.getCenter();
+  document.getElementById('vlat').textContent = c.lat.toFixed(5);
+  document.getElementById('vlon').textContent = c.lng.toFixed(5);
+  document.getElementById('vdms').textContent = `${dms(c.lat, 'N', 'S')}  ${dms(c.lng, 'E', 'W')}`;
+}
+map.on('move', updateCentre);
+updateCentre();
+
+// ---- toast ----
+let toastT;
+function toast(msg, ms = 4200) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastT);
+  toastT = setTimeout(() => t.classList.remove('show'), ms);
+}
+
+// ---- GPS ----
+let watchId = null, meMarker = null, accCircle = null, follow = false, haveFix = false;
+const gdot = document.getElementById('gdot');
+const gtxt = document.getElementById('gtxt');
+const meIcon = L.divIcon({
+  className: '',
+  html: '<div class="me"><div class="pulse"></div><div class="core"></div></div>',
+  iconSize: [0, 0],
+});
+
+function setGps(state, txt) {
+  gdot.className = 'gpsdot' + (state ? ' ' + state : '');
+  gtxt.textContent = txt;
+}
+
+function onPos(p) {
+  haveFix = true;
+  const { latitude: lat, longitude: lon, accuracy: acc } = p.coords;
+  const ll = [lat, lon];
+  if (!meMarker) {
+    meMarker = L.marker(ll, { icon: meIcon, interactive: false, zIndexOffset: 1000 }).addTo(map);
+  } else {
+    meMarker.setLatLng(ll);
+  }
+  if (!accCircle) {
+    accCircle = L.circle(ll, { radius: acc, color: '#3bd17a', weight: 1, fillColor: '#3bd17a', fillOpacity: .08 }).addTo(map);
+  } else {
+    accCircle.setLatLng(ll);
+    accCircle.setRadius(acc);
+  }
+  setGps('fix', `Fix · ±${Math.round(acc)} m`);
+  if (follow) map.setView(ll, Math.max(map.getZoom(), 15), { animate: true });
+}
+
+function onErr(err) {
+  setGps('err', 'No GPS');
+  let m = 'Location unavailable.';
+  if (err.code === 1) m = 'Location permission denied.';
+  else if (err.code === 2) m = 'Position unavailable — need clearer sky or a moment to lock.';
+  else if (err.code === 3) m = 'GPS timed out. Try Locate again.';
+  if (!window.isSecureContext) m = 'GPS needs HTTPS. Serve over HTTPS or localhost.';
+  toast(m, 6000);
+}
+
+function startGps() {
+  if (!('geolocation' in navigator)) { setGps('err', 'No GPS'); toast('No geolocation API.'); return; }
+  setGps('', 'Locating…');
+  navigator.geolocation.getCurrentPosition(
+    p => { onPos(p); map.setView([p.coords.latitude, p.coords.longitude], 15); },
+    onErr,
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 }
+  );
+  if (watchId === null) {
+    watchId = navigator.geolocation.watchPosition(onPos, onErr, { enableHighAccuracy: true, timeout: 15000, maximumAge: 2000 });
+  }
+}
+
+document.getElementById('bLocate').addEventListener('click', startGps);
+document.getElementById('bFollow').addEventListener('click', e => {
+  follow = !follow;
+  e.currentTarget.classList.toggle('on', follow);
+  if (follow) {
+    if (!haveFix) startGps();
+    else if (meMarker) map.setView(meMarker.getLatLng(), Math.max(map.getZoom(), 15));
+  }
+});
+map.on('dragstart', () => {
+  if (follow) { follow = false; document.getElementById('bFollow').classList.remove('on'); }
+});
+
+// ---- download button placeholder ----
+document.getElementById('bDownload').addEventListener('click', () => {
+  toast('Download manager — coming soon.');
+});
+</script>
+</body>
+</html>
