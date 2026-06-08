@@ -222,7 +222,11 @@ const OfflineTopoLayer = L.GridLayer.extend({
   },
 });
 
-const topo = new OfflineTopoLayer({ maxNativeZoom: 16, maxZoom: 18, attribution: ATTR });
+const retina = L.Browser.retina;
+const topo = new OfflineTopoLayer({
+  maxNativeZoom: 16, maxZoom: 18, attribution: ATTR,
+  tileSize: retina ? 128 : 256, zoomOffset: retina ? 1 : 0,
+});
 const map = L.map('map', { zoomControl: false, layers: [topo] }).setView([-33.7126, 150.3119], 14);
 L.control.zoom({ position: 'topleft' }).addTo(map);
 L.control.scale({ position: 'bottomleft', metric: true, imperial: false, maxWidth: 140 }).addTo(map);
