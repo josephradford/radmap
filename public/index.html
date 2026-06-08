@@ -91,6 +91,48 @@
     padding: 10px 14px; border-radius: 10px; line-height: 1.5; box-shadow: 0 8px 28px rgba(0,0,0,.5); opacity: 0; pointer-events: none; transition: opacity .25s;
   }
   .toast.show { opacity: 1; }
+  .dl-overlay {
+    position: absolute; inset: 0; z-index: 2000; background: rgba(13,12,10,.92);
+    display: none; flex-direction: column; align-items: center; justify-content: flex-start;
+    padding: max(60px, calc(env(safe-area-inset-top) + 20px)) 16px max(20px, env(safe-area-inset-bottom)) 16px;
+    overflow-y: auto;
+  }
+  .dl-overlay.open { display: flex; }
+  .dl-header {
+    width: 100%; max-width: 400px; display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 16px;
+  }
+  .dl-header h2 { font-family: var(--mono); font-size: 14px; letter-spacing: .14em; text-transform: uppercase; font-weight: 700; margin: 0; }
+  .dl-close {
+    appearance: none; background: none; border: 1px solid var(--hair); color: var(--ink); font-family: var(--mono);
+    font-size: 10px; padding: 8px 12px; border-radius: 8px; cursor: pointer; text-transform: uppercase; letter-spacing: .1em;
+  }
+  .dl-region {
+    width: 100%; max-width: 400px; background: var(--panel); border: 1px solid var(--hair); border-radius: 11px;
+    padding: 12px 14px; margin-bottom: 10px;
+  }
+  .dl-region .name { font-family: var(--mono); font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+  .dl-region .info { font-family: var(--mono); font-size: 10px; color: var(--ink-dim); margin-bottom: 8px; }
+  .dl-region .bar-track { width: 100%; height: 4px; background: var(--hair); border-radius: 2px; margin-bottom: 8px; overflow: hidden; display: none; }
+  .dl-region .bar-fill { height: 100%; background: var(--amber); border-radius: 2px; width: 0%; transition: width .2s; }
+  .dl-region.downloading .bar-track { display: block; }
+  .dl-region .actions { display: flex; gap: 8px; }
+  .dl-region .dl-btn {
+    appearance: none; border: 1px solid var(--hair); background: rgba(242,235,221,.06); color: var(--ink);
+    font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600;
+    padding: 8px 12px; border-radius: 8px; cursor: pointer;
+  }
+  .dl-region .dl-btn:active { transform: scale(.96); }
+  .dl-region .dl-btn.ready { border-color: var(--gps); color: var(--gps); }
+  .dl-region .dl-btn.delete { border-color: var(--amber); color: var(--amber); }
+  .dl-all {
+    width: 100%; max-width: 400px; margin-top: 6px;
+  }
+  .dl-all .dl-btn {
+    width: 100%; appearance: none; border: 1px solid var(--amber); background: var(--amber-soft); color: var(--amber);
+    font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600;
+    padding: 12px; border-radius: 10px; cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -126,10 +168,22 @@
 
 <div class="toast" id="toast"></div>
 
+<div class="dl-overlay" id="dlOverlay">
+  <div class="dl-header">
+    <h2>Offline Maps</h2>
+    <button class="dl-close" id="dlClose">Close</button>
+  </div>
+  <div id="dlList"></div>
+  <div class="dl-all"><button class="dl-btn" id="dlAll">Download All</button></div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script type="module">
 import { toMGA, formatMGA, formatGridRef } from './lib/mga.mjs';
-import { getTile } from './lib/tile-store.mjs';
+import { getTile, storeTilesBatch, saveRegionMeta, getAllRegionMeta, deleteRegionMeta, deleteTiles } from './lib/tile-store.mjs';
+import { readArchiveIndex, getTileFromBuffer } from './lib/tile-archive.mjs';
+import { REGIONS, ZOOM_MIN, ZOOM_MAX } from './lib/regions.mjs';
+import { tilesInBbox } from './lib/tile-math.mjs';
 // ---- map setup ----
 const ATTR = '© State of NSW (Spatial Services) — CC BY 4.0';
 const NSW_TILE_URL = 'https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Topo_Map/MapServer/tile';
@@ -270,10 +324,175 @@ map.on('dragstart', () => {
   if (follow) { follow = false; document.getElementById('bFollow').classList.remove('on'); }
 });
 
-// ---- download button placeholder ----
+// ---- download manager ----
+const dlOverlay = document.getElementById('dlOverlay');
+const dlList = document.getElementById('dlList');
+
 document.getElementById('bDownload').addEventListener('click', () => {
-  toast('Download manager — coming soon.');
+  openDownloadPanel();
 });
+document.getElementById('dlClose').addEventListener('click', () => {
+  dlOverlay.classList.remove('open');
+});
+document.getElementById('dlAll').addEventListener('click', () => {
+  downloadAllRegions();
+});
+
+async function openDownloadPanel() {
+  dlOverlay.classList.add('open');
+  await renderRegionList();
+}
+
+async function renderRegionList() {
+  const downloaded = await getAllRegionMeta();
+  const downloadedIds = new Set(downloaded.map(r => r.id));
+
+  let manifestData = [];
+  try {
+    const res = await fetch('./tiles/manifest.json');
+    if (res.ok) manifestData = await res.json();
+  } catch {}
+
+  const manifestMap = new Map(manifestData.map(m => [m.id, m]));
+
+  dlList.innerHTML = '';
+  for (const region of REGIONS) {
+    const manifest = manifestMap.get(region.id);
+    const isReady = downloadedIds.has(region.id);
+
+    const div = document.createElement('div');
+    div.className = 'dl-region';
+    div.id = `dl-${region.id}`;
+
+    const sizeMB = manifest ? (manifest.fileSize / 1024 / 1024).toFixed(0) : '?';
+    const tileN = manifest ? manifest.tileCount.toLocaleString() : '?';
+
+    div.innerHTML = `
+      <div class="name">${region.name}</div>
+      <div class="info">${tileN} tiles · ${sizeMB} MB</div>
+      <div class="bar-track"><div class="bar-fill"></div></div>
+      <div class="actions">
+        ${isReady
+          ? `<button class="dl-btn ready" disabled>Ready</button><button class="dl-btn delete" data-region="${region.id}">Delete</button>`
+          : manifest
+            ? `<button class="dl-btn" data-download="${region.id}">Download</button>`
+            : `<button class="dl-btn" disabled>Not available</button>`
+        }
+      </div>
+    `;
+    dlList.appendChild(div);
+  }
+
+  dlList.querySelectorAll('[data-download]').forEach(btn => {
+    btn.addEventListener('click', () => downloadRegion(btn.dataset.download));
+  });
+  dlList.querySelectorAll('[data-region]').forEach(btn => {
+    btn.addEventListener('click', () => deleteRegion(btn.dataset.region));
+  });
+}
+
+async function downloadRegion(regionId) {
+  const region = REGIONS.find(r => r.id === regionId);
+  if (!region) return;
+
+  const div = document.getElementById(`dl-${regionId}`);
+  div.classList.add('downloading');
+  const fill = div.querySelector('.bar-fill');
+  const actions = div.querySelector('.actions');
+  actions.innerHTML = '<span style="font-family:var(--mono);font-size:10px;color:var(--ink-dim)">Downloading…</span>';
+
+  try {
+    const res = await fetch(`./tiles/${regionId}.tiles`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const total = parseInt(res.headers.get('content-length') || '0', 10);
+    const reader = res.body.getReader();
+    const chunks = [];
+    let received = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      if (total > 0) fill.style.width = `${Math.round(100 * received / total)}%`;
+    }
+
+    actions.innerHTML = '<span style="font-family:var(--mono);font-size:10px;color:var(--ink-dim)">Unpacking…</span>';
+    fill.style.width = '100%';
+
+    const combined = new Uint8Array(received);
+    let pos = 0;
+    for (const chunk of chunks) {
+      combined.set(chunk, pos);
+      pos += chunk.length;
+    }
+
+    const index = readArchiveIndex(combined.buffer);
+    const BATCH_SIZE = 200;
+    let batch = [];
+
+    for (let i = 0; i < index.entries.length; i++) {
+      const entry = index.entries[i];
+      const tile = getTileFromBuffer(combined.buffer, index, entry.z, entry.x, entry.y);
+      if (tile) {
+        const blob = new Blob([tile.data], { type: tile.format });
+        batch.push({ z: entry.z, x: entry.x, y: entry.y, blob });
+      }
+      if (batch.length >= BATCH_SIZE || i === index.entries.length - 1) {
+        await storeTilesBatch(batch);
+        batch = [];
+        fill.style.width = `${Math.round(100 * (i + 1) / index.entries.length)}%`;
+      }
+    }
+
+    await saveRegionMeta({
+      id: regionId,
+      name: region.name,
+      bounds: region.bounds,
+      tileCount: index.tileCount,
+      downloadedAt: new Date().toISOString(),
+    });
+
+    div.classList.remove('downloading');
+    await renderRegionList();
+  } catch (err) {
+    div.classList.remove('downloading');
+    actions.innerHTML = `<span style="font-family:var(--mono);font-size:10px;color:var(--amber)">Failed: ${err.message}</span>`;
+  }
+}
+
+async function downloadAllRegions() {
+  const downloaded = await getAllRegionMeta();
+  const downloadedIds = new Set(downloaded.map(r => r.id));
+  for (const region of REGIONS) {
+    if (!downloadedIds.has(region.id)) {
+      await downloadRegion(region.id);
+    }
+  }
+}
+
+async function deleteRegion(regionId) {
+  const region = REGIONS.find(r => r.id === regionId);
+  if (!region) return;
+
+  const { bounds } = region;
+  const keys = [];
+  for (let z = ZOOM_MIN; z <= ZOOM_MAX; z++) {
+    for (const t of tilesInBbox(bounds.south, bounds.west, bounds.north, bounds.east, z)) {
+      keys.push(`${t.z}/${t.x}/${t.y}`);
+    }
+  }
+
+  await deleteTiles(keys);
+  await deleteRegionMeta(regionId);
+  await renderRegionList();
+}
+
+// ---- request persistent storage ----
+if (navigator.storage && navigator.storage.persist) {
+  navigator.storage.persist();
+}
 </script>
 </body>
 </html>
