@@ -86,7 +86,7 @@
 
   .leaflet-control-attribution { font-family: var(--mono); font-size: 9px !important; background: rgba(13,12,10,.6) !important; color: var(--ink-dim) !important; }
   .leaflet-control-attribution a { color: var(--ink-dim) !important; }
-  .leaflet-control-scale-line { font-family: var(--mono) !important; font-size: 9px !important; background: var(--panel) !important; color: var(--ink) !important; border-color: var(--hair) !important; border-top: none !important; }
+  .leaflet-control-scale-line { font-family: var(--mono) !important; font-size: 11px !important; font-weight: 600; background: var(--panel) !important; color: var(--ink) !important; border-color: var(--ink-dim) !important; border-width: 2px !important; border-top: none !important; }
   .leaflet-bar a { background: var(--panel-solid) !important; color: var(--ink) !important; border-color: var(--hair) !important; }
 
   .toast {
@@ -225,7 +225,7 @@ const OfflineTopoLayer = L.GridLayer.extend({
 
 const retina = L.Browser.retina;
 const topo = new OfflineTopoLayer({
-  maxNativeZoom: 16, maxZoom: 18, attribution: ATTR,
+  maxNativeZoom: retina ? 15 : 16, maxZoom: 18, attribution: ATTR,
   tileSize: retina ? 128 : 256, zoomOffset: retina ? 1 : 0,
 });
 const map = L.map('map', { zoomControl: false, layers: [topo] }).setView([-33.7126, 150.3119], 14);
