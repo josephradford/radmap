@@ -1,0 +1,17 @@
+{
+  "name": "radmap",
+  "short_name": "radmap",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0d0c0a",
+  "theme_color": "#0d0c0a",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%230d0c0a' width='100' height='100' rx='20'/><circle cx='50' cy='50' r='12' fill='none' stroke='%23e8843b' stroke-width='5'/><circle cx='50' cy='50' r='4' fill='%23e8843b'/></svg>",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
