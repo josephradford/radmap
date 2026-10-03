@@ -1,0 +1,8 @@
+.git
+.github
+docs
+test
+tools
+node_modules
+# Tile archives are mounted at runtime, never baked into the image
+public/tiles
