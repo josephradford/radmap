@@ -39,6 +39,16 @@ export const REGIONS = [
     name: 'Wollemi NP',
     bounds: { south: -33.50, west: 149.80, north: -32.65, east: 150.85 },
   },
+  {
+    id: 'kioloa',
+    name: 'Kioloa',
+    bounds: { south: -35.60, west: 150.22, north: -35.46, east: 150.45 },
+  },
+  {
+    id: 'durras',
+    name: 'Durras',
+    bounds: { south: -35.74, west: 150.18, north: -35.60, east: 150.40 },
+  },
 ];
 
 export const ZOOM_MIN = 10;

@@ -1,5 +1,5 @@
 // public/sw.js
-const CACHE_NAME = 'radmap-v2';
+const CACHE_NAME = 'radmap-v3';
 
 const APP_SHELL = [
   './',
